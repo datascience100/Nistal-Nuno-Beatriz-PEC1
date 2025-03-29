@@ -1,0 +1,122 @@
+---
+title: "Metadatos."
+author: "Beatriz Nistal Nuño"
+date: "2025-03-25"
+output:
+  html_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+Los datos se cargan como un archivo de Microsoft Excel, (cada columna es una variable y cada fila es una observación). El archivo de Excel contiene una Hoja de Datos y una Hoja de metabolitos. La Hoja de Datos contiene todas las concentraciones de metabolitos y los metadatos asociados a cada observación (incluye las columnas: Idx, *SampleID*, *SampleType* y *Class*). La Hoja de metabolitos contiene todos los metadatos correspondientes a cada metabolito medido (incluye las columnas: Idx, *Name*, *Label*, *Perc_missing* y *QC_RSD*). 
+ 
+En este ejemplo, los datos importados constan de 140 muestras y 149 metabolitos. Cada fila describe una sola muestra de orina, donde:
+
++ Las columnas M1 a M149 describen las concentraciones de metabolitos.
++ La columna *SampleType* indica si la muestra fue un control de calidad agrupado (QC) o una muestra de estudio.
++ La columna *Class* indica el resultado clínico observado para ese individuo: GC = Cáncer gástrico, BN = Tumor benigno, HE = Control sano. 
+
+
+```{r, message=FALSE, warning=FALSE }
+library(Biobase) 
+```
+
+
+
+```{r }
+library(readxl)
+datafile = read_excel("GastricCancer_NMR (final).xlsx", sheet=1) # leo la Hoja de Datos
+head(datafile)
+dim(datafile)
+```
+
+ 
+En este ejemplo, los datos importados de los metabolitos constan de 149 metabolitos (los mismos que en la tabla de datos).
+
+Cada fila describe un único metabolito, donde:
+
++ La columna Idx es un índice único de metabolito.
++ La columna *Name* es el encabezado de columna correspondiente a este metabolito en la tabla de datos.
++ La columna *Label* proporciona un nombre único para el metabolito (o un identificador).
++ La columna *Perc_missing* indica el porcentaje de muestras que no contienen una medición de este metabolito (datos faltantes).
++ La columna *QC_RSD* es una puntuación de calidad que representa la variación en las mediciones de este metabolito en todas las muestras.
+
+
+```{r }
+metabolite_metadata <- read_excel("GastricCancer_NMR (final).xlsx", sheet=2 )  # leo la Hoja de metabolitos
+head(metabolite_metadata)
+metabolite_metadata=as.matrix(metabolite_metadata)  # convierto la hoja de excel a matriz
+head(metabolite_metadata)
+dim(metabolite_metadata)
+
+```
+
+
+
+```{r}
+
+
+datafile_matrix= as.matrix(datafile)  # convierto la hoja de excel a matriz
+rownames(datafile_matrix)=datafile_matrix[ , 2]  #asigno a los nombres de las filas la columna del número de muestra
+datafile_matrix_reduced=datafile_matrix[ ,c(-1,-2,-3,-4)]  # elimino las columnas que contienen los metadatos de cada muestra
+
+# Transposing the matrix
+t_datafile_matrix_reduced <- t(datafile_matrix_reduced)
+dim(t_datafile_matrix_reduced)
+numbers=as.numeric(t_datafile_matrix_reduced[ ,1:140])  # convierto la matriz de concentraciones de metabolitos a números analizables
+t_datafile_matrix_reduced= matrix(numbers, nrow=149, byrow=FALSE)
+
+rownames(t_datafile_matrix_reduced)=colnames(datafile_matrix_reduced)  # asigno nombres a las filas
+colnames(t_datafile_matrix_reduced)=rownames(datafile_matrix_reduced)  # asigno nombres a las columnas
+t_datafile_matrix_reduced[1:5,1:5]
+sample_metadata = datafile_matrix[ ,c(1,2,3,4)]  # selecciono los metadatos de las muestras que luego formarán parte del objeto SummarizedExperiment 
+rownames(sample_metadata)=sample_metadata[ , 1] # asigno nombres a las filas
+sample_metadata= sample_metadata[,-1]  # elimino la primera columna
+sample_metadata[1:5,]
+dim(sample_metadata)
+
+
+
+rownames(metabolite_metadata)=metabolite_metadata[,1]
+metabolite_metadata=metabolite_metadata[,-1]  # elimino la primera columna
+metabolite_metadata[1:5,]
+sample_metadata= as.data.frame(sample_metadata) # convierto la matriz de metadatos a dataframe, que es el tipo de datos que necesita el SummarizedExperiment
+head(sample_metadata)
+metabolite_metadata= as.data.frame(metabolite_metadata) # convierto la matriz de metabolitos a dataframe, que es el tipo de datos que necesita el SummarizedExperiment
+metabolite_metadata[1:5,]
+sapply(metabolite_metadata, class)  # compruebo los tipos de datos de las columnas de los metabolitos
+metabolite_metadata$Perc_missing=as.numeric(metabolite_metadata$Perc_missing)  # convierto esta columna a numérica
+metabolite_metadata$QC_RSD=as.numeric(metabolite_metadata$QC_RSD)  # convierto esta columna a numérica
+
+str(t_datafile_matrix_reduced)  # compruebo los tipos de datos de las columnas
+str(sample_metadata)  # compruebo los tipos de datos de las columnas
+str(metabolite_metadata)  # compruebo los tipos de datos de las columnas
+```
+
+
+```{r, message=FALSE, warning=FALSE}
+library("SummarizedExperiment")
+```
+
+
+```{r}
+stopifnot(rownames(t_datafile_matrix_reduced) == metabolite_metadata$Name) # compruebo que los nombres coinciden
+stopifnot(colnames(t_datafile_matrix_reduced) == sample_metadata$SampleID) # compruebo que los nombres coinciden
+rownames(sample_metadata)=sample_metadata$SampleID
+rownames(metabolite_metadata)=metabolite_metadata$Name
+se <- SummarizedExperiment(assays = list(counts = t_datafile_matrix_reduced), colData = sample_metadata, rowData = metabolite_metadata) # construyo el SummarizedExperiment
+se  # visualizo el SummarizedExperiment
+assay(se)[1:5,1:5]   # visualizo la matriz de concentraciones que forma parte del SummarizedExperiment
+
+head(colData(se)) # visualizo los datos de las muestras que forman parte del SummarizedExperiment
+dim(colData(se))
+head(rowData(se)) # visualizo los datos de los metabolitos que forman parte del SummarizedExperiment
+dim(rowData(se))
+  
+```
+
